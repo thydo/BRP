@@ -1,0 +1,87 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+
+
+// DEFINIATIONS ---------------------------------------------------------------------------------------------
+struct ParticleData
+{
+	float4 Position;
+	float4 Color;
+};
+
+struct MeshData {
+	float3 Position;
+};
+struct MeshDataUV {
+	float2 UV;
+};
+
+
+// DECLRATIONS ---------------------------------------------------------------------------------------------
+//General stuff
+float _Time;
+float3 CameraPosition;
+float3 CameraForward;
+StructuredBuffer<ParticleData> _inParticleBuffer;
+RWStructuredBuffer<ParticleData> _outParticleBuffer;
+int _NumberOfParticles;
+
+//Mesh One
+int _CachePointVertexcoundOne;
+float4 _transformInfoOne;
+StructuredBuffer<MeshData> _MeshDataOne;
+StructuredBuffer<MeshDataUV> _MeshDataUVOne;
+
+Texture2D<float4> _MeshTextureOne;
+
+
+// HELPER FUNCTIONS --------------------------------------------------------------------------------------------
+
+float randOneD(float seed) {
+	return frac(sin(seed * 21.) * 61.);
+}
+float3 rgb2hsv(float3 c)
+{
+	float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
+	float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
+
+	float d = q.x - min(q.w, q.y);
+	float e = 1.0e-10;
+	return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+// MAIN PARTICLE LOOP --------------------------------------------------------------------------------------------
+
+[numthreads(10, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+
+	ParticleData pIn = _inParticleBuffer[id.x];
+	float r = frac(float(id.x));
+	float c = floor(float(id.x));
+
+	// Mesh One
+	float stride = ((float)_CachePointVertexcoundOne) / ((float)_NumberOfParticles);
+	stride = max(1., stride);
+	stride = id.x * floor(stride);
+	float3 cachePosOne = _MeshDataOne[floor(stride)].Position * _transformInfoOne.w + _transformInfoOne.xyz;
+	float2 uv = _MeshDataUVOne[floor(stride)].UV;
+	float4 colorOne = id.x;
+
+
+	//Set color and position
+	pIn.Color = colorOne;
+	pIn.Position.xyz = cachePosOne;
+
+	//Passing info to the vertex shaders of the particles, I was using this to adjust particle size and fog
+	float dToCam = distance(CameraPosition.xz, pIn.Position.xz);
+	pIn.Position.w = dToCam;
+	dToCam = smoothstep(5., 1000., dToCam);
+
+	// Colorazations
+	colorOne.xyz = rgb2hsv(pIn.Color.xyz);
+
+	_outParticleBuffer[id.x] = pIn;
+}
